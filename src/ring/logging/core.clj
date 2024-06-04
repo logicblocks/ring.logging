@@ -1,0 +1,1 @@
+(ns ring.logging.core)
