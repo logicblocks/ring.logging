@@ -15,7 +15,7 @@ require 'yaml'
 task default: %i[
   build:code:fix
   library:check
-  library:test:integration
+  library:test:unit
 ]
 
 RakeLeiningen.define_installation_tasks(
@@ -183,12 +183,10 @@ namespace :library do
 
   namespace :test do
     RakeLeiningen.define_test_task(
-      name: :integration,
-      type: 'integration',
+      name: :unit,
+      type: 'unit',
       profile: 'test'
-    ) do
-      Rake::Task['database:test:provision'].invoke unless ENV['CI'] == 'true'
-    end
+    )
   end
 
   namespace :publish do
