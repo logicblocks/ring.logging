@@ -10,8 +10,6 @@
           (log/info logger :service.rest/request.starting
                     {:request request})
           (assoc request :metadata {:start-ms start-ms})))]
-     (fn [request]
-       (handler request))
      (fn
        ([request]
         (handler (log-request request)))
