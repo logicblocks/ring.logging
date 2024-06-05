@@ -3,10 +3,12 @@
 
 (defn wrap-request-logging
   ([handler logger]
+   (wrap-request-logging handler logger #(System/currentTimeMillis))
+   ) ([handler logger get-current-time-ms]
    (letfn
      [(log-request
         [request]
-        (let [start-ms (System/currentTimeMillis)]
+        (let [start-ms (get-current-time-ms)]
           (log/info logger :service.rest/request.starting
                     {:request request})
           (assoc request :metadata {:start-ms start-ms})))]
