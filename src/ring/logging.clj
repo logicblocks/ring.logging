@@ -2,53 +2,55 @@
   (:require [cartus.core :as log]))
 
 (defn wrap-request-logging
-  ([handler logger]
-   (wrap-request-logging handler logger #(System/currentTimeMillis))
-   ) ([handler logger get-current-time-ms]
-   (letfn
-     [(log-request
-        [request]
-        (let [start-ms (get-current-time-ms)]
-          (log/info logger :service.rest/request.starting
-                    {:request request})
-          (assoc request :metadata {:start-ms start-ms})))]
-     (fn
-       ([request]
-        (handler (log-request request)))
-       ([request respond raise]
-        (handler (log-request request) respond raise))))))
+  [handler logger]
+  (letfn
+   [(log-request
+      [request]
+      (log/info logger :service.rest/request.starting
+        {:request request})
+      request)]
+    (fn
+      ([request]
+       (handler (log-request request)))
+      ([request respond raise]
+       (handler (log-request request) respond raise)))))
+
+(def default-current-time-millis-fn #(System/currentTimeMillis))
+(def default-response-logging-opts
+  {:current-time-millis-fn
+   default-current-time-millis-fn})
 
 (defn wrap-response-logging
   ([handler logger]
-   (letfn
-     [(log-response
-        [request response metadata]
-        (let [start-ms (get metadata :start-ms)
-              latency (- (System/currentTimeMillis) start-ms)]
-          (log/info logger :service.rest/request.completed
-                    {:request  request
-                     :response response
-                     :latency  latency})))]
-     (fn
-       ([request]
-        (let [metadata
-              (get request :metadata
-                   {:start-ms (System/currentTimeMillis)})
-              response (handler request)]
-          (log-response request response metadata)
-          response))
-       ([request respond raise]
-        (let [metadata (get request :metadata
-                            {:start-ms (System/currentTimeMillis)})]
-          (handler request
-                   (fn [response]
-                     (log-response request response metadata)
-                     (respond response))
-                   raise)))))))
+   (wrap-response-logging handler logger default-response-logging-opts))
+  ([handler logger {:keys [current-time-millis-fn]}]
+   (let [current-time-millis-fn
+         (or current-time-millis-fn default-current-time-millis-fn)]
+     (letfn
+      [(log-response
+         [request response metadata]
+         (let [start-ms (get metadata :start-ms)
+               latency (- (current-time-millis-fn) start-ms)]
+           (log/info logger :service.rest/request.completed
+             {:request  request
+              :response response
+              :latency  latency})))]
+       (fn
+         ([request]
+          (let [metadata {:start-ms (current-time-millis-fn)}
+                response (handler request)]
+            (log-response request response metadata)
+            response))
+         ([request respond raise]
+          (let [metadata {:start-ms (current-time-millis-fn)}]
+            (handler request
+              (fn [response]
+                (log-response request response metadata)
+                (respond response))
+              raise))))))))
 
 (defn wrap-logging
-  [handler logger]
+  [handler logger current-time-millis-fn]
   (-> handler
-      (wrap-request-logging logger)
-      (wrap-response-logging logger)))
-
+    (wrap-request-logging logger)
+    (wrap-response-logging logger current-time-millis-fn)))

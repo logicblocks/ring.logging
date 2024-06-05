@@ -1,80 +1,105 @@
 (ns ring.logging-test
   (:require [clojure.test :refer :all]
             [ring.logging :as sut]
-            [cartus.test :as log]))
+            [cartus.test :as log :refer [logged?]]))
+
+(defn- mk-handler [response-to-return]
+  (fn
+    ([req]
+     (-> response-to-return
+       (with-meta {::received-request req})))
+    ([req respond _raise]
+     (-> response-to-return
+       (with-meta {::received-request req})
+       respond))))
+
+(defn- run-async-handler [handler request]
+  (let [captured-response (atom nil)
+        respond (fn [response]
+                  (reset! captured-response response))
+        raise (fn [err]
+                (throw (ex-info "Raised error" {:err err})))]
+    (handler request respond raise)
+    @captured-response))
 
 (deftest wrap-request-logging-test
   (let [test-response {:body "Hi" :status 200}
-        base-handler (fn
-                       ([req] (assoc test-response ::received-request req))
-                       ([req _response _raise]
-                        (assoc test-response ::received-request req)))
-        request {:url "some-url", :body "some-request-body"}
-        now (System/currentTimeMillis)
-        get-current-time-ms (constantly now)]
+        base-handler (mk-handler test-response)
+        request {:url "some-url", :body "some-request-body"}]
     (testing "sync request is logged"
       (let [logger (log/logger)
-            wrapped-handler (sut/wrap-request-logging base-handler logger get-current-time-ms)
+            wrapped-handler (sut/wrap-request-logging base-handler logger)
             response (wrapped-handler request)]
         (is (= response
-               (merge
-                 {::received-request (assoc-in request [:metadata :start-ms] now)}
-                 test-response)))
-        (is (= [{:context {:request request}
-                 :level   :info
-                 :type    :service.rest/request.starting}]
-               (->> (log/events logger)
-                    (map #(dissoc % :meta)))))))
+              test-response))
+        (is (= (-> response meta ::received-request)
+              request))
+        (is (logged?
+              logger
+              #{:only}
+              {:context {:request request}
+               :level   :info
+               :type    :service.rest/request.starting}))))
     (testing "async request is logged"
       (let [logger (log/logger)
-            wrapped-handler (sut/wrap-request-logging base-handler logger get-current-time-ms)
-            response (wrapped-handler request nil nil)]
+            wrapped-handler (sut/wrap-request-logging base-handler logger)
+            response (run-async-handler wrapped-handler request)]
         (is (= response
-               (merge
-                 {::received-request (assoc-in request [:metadata :start-ms] now)}
-                 test-response)))
-        (is (= [{:context {:request request}
-                 :level   :info
-                 :type    :service.rest/request.starting}]
-               (->> (log/events logger)
-                    (map #(dissoc % :meta)))))))))
+              test-response))
+        (is (= (-> response meta ::received-request)
+              request))
+        (is (logged?
+              logger
+              #{:only}
+              {:context {:request request}
+               :level   :info
+               :type    :service.rest/request.starting}))))))
 
 (deftest wrap-response-logging-test
-  (let [test-response {:body "Hi" :status 200 }
-        base-handler (fn
-                       ([_req] test-response)
-                       ([_req _response _raise] test-response))
-        request {}]
+  (let [test-response {:body "Hi" :status 200}
+        base-handler (mk-handler test-response)
+        request {:url "some-url", :body "some-request-body"}]
     (testing "sync response is logged"
       (let [logger (log/logger)
-            wrapped-handler (sut/wrap-response-logging base-handler logger)
+            time (atom 0)
+            duration 10
+            current-time-millis-fn (fn [] (swap! time #(+ % 10)))
+            wrapped-handler (sut/wrap-response-logging
+                              base-handler
+                              logger
+                              {:current-time-millis-fn current-time-millis-fn})
             response (wrapped-handler request)]
         (is (= response
-               {:body   "Hi"
-                :status 200}))
-        (is (=
-              [{:context {:latency  0
-                          :request  {}
-                          :response {:body   "Hi"
-                                     :status 200}}
-                :level   :info
-                :type    :service.rest/request.completed}]
-              (->> (log/events logger)
-                   (map #(dissoc % :meta)))))))
+              test-response))
+        (is (= (-> response meta ::received-request)
+              request))
+        (is (logged?
+              logger
+              #{:only}
+              {:context {:latency  duration
+                         :request  request
+                         :response test-response}
+               :level   :info
+               :type    :service.rest/request.completed}))))
     (testing "async response is logged"
       (let [logger (log/logger)
-            wrapped-handler (sut/wrap-response-logging base-handler logger)
-            response (wrapped-handler request nil nil)]
+            time (atom 0)
+            duration 10
+            current-time-millis-fn (fn [] (swap! time #(+ % 10)))
+            wrapped-handler (sut/wrap-response-logging
+                              base-handler
+                              logger
+                              {:current-time-millis-fn current-time-millis-fn})
+            response (run-async-handler wrapped-handler request)]
         (is (= response
-               {:body   "Hi"
-                :status 200}))
-        (is (=
-              [{:context {:latency  0
-                          :request  {}
-                          :response {:body   "Hi"
-                                     :status 200}}
-                :level   :info
-                :type    :service.rest/request.completed}]
-              (->> (log/events logger)
-                   (map #(dissoc % :meta))))))))
-  )
+              test-response))
+        (is (= (-> response meta ::received-request)
+              request))
+        (is (logged?
+              logger
+              #{:only}
+              {:context {:latency  duration
+                         :request  request
+                         :response test-response}
+               :level   :info
+               :type    :service.rest/request.completed}))))))
