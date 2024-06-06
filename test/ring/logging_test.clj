@@ -28,7 +28,9 @@
         request {:url "some-url", :body "some-request-body"}]
     (testing "sync request is logged"
       (let [logger (log/logger)
-            wrapped-handler (sut/wrap-request-logging base-handler logger)
+            options {:update-context-fn identity}
+            wrapped-handler
+            (sut/wrap-request-logging base-handler logger options)
             response (wrapped-handler request)]
         (is (= response
               test-response))
@@ -42,7 +44,9 @@
                :type    :service.rest/request.starting}))))
     (testing "async request is logged"
       (let [logger (log/logger)
-            wrapped-handler (sut/wrap-request-logging base-handler logger)
+            options {:update-context-fn identity}
+            wrapped-handler
+            (sut/wrap-request-logging base-handler logger options)
             response (run-async-handler wrapped-handler request)]
         (is (= response
               test-response))
@@ -77,7 +81,8 @@
             time (atom 0)
             duration 10
             current-time-millis-fn (fn [] (swap! time #(+ % 10)))
-            options {:current-time-millis-fn current-time-millis-fn}
+            options {:current-time-millis-fn current-time-millis-fn
+                     :update-context-fn identity}
             wrapped-handler (sut/wrap-response-logging
                               base-handler
                               logger
@@ -100,7 +105,8 @@
             time (atom 0)
             duration 10
             current-time-millis-fn (fn [] (swap! time #(+ % 10)))
-            options {:current-time-millis-fn current-time-millis-fn}
+            options {:current-time-millis-fn current-time-millis-fn
+                     :update-context-fn identity}
             wrapped-handler (sut/wrap-response-logging
                               base-handler
                               logger

@@ -1,8 +1,21 @@
 (ns ring.logging
   (:require [cartus.core :as log]))
 
+(def log-request-keys
+  [:server-name :uri :query-string :scheme
+   :request-method :headers :token])
+
+(def log-response-keys
+  [:status :headers])
+
+(defn- select-request-keys [context]
+  (update context :request select-keys log-request-keys))
+
+(defn- select-response-keys [context]
+  (update context :response select-keys log-response-keys))
+
 (def default-request-logging-options
-  {:update-context-fn identity})
+  {:update-context-fn select-request-keys})
 
 (defn wrap-request-logging
   ([handler logger]
@@ -28,7 +41,7 @@
   {:current-time-millis-fn
    #(System/currentTimeMillis)
    :update-context-fn
-   identity})
+   (comp select-request-keys select-response-keys)})
 
 (defn wrap-response-logging
   ([handler logger]
