@@ -1,4 +1,4 @@
-(defproject io.logicblocks/ring.logging "0.0.1-RC2"
+(defproject io.logicblocks/ring.logging "0.0.1-RC3"
   :description "Logging middleware for ring handlers using cartus for logging."
   :url "https://github.com/logicblocks/ring.logging"
 
