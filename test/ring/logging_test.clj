@@ -53,6 +53,19 @@
               #{:only}
               {:context {:request request}
                :level   :info
+               :type    :service.rest/request.starting}))))
+    (testing "can provide function for updating context data"
+      (let [logger (log/logger)
+            hide-url #(assoc-in % [:request :url] "****")
+            options {:update-context-fn hide-url}
+            wrapped-handler
+            (sut/wrap-request-logging base-handler logger options)
+            _ (wrapped-handler request)]
+        (is (logged?
+              logger
+              #{:only}
+              {:context {:request {:url "****"}}
+               :level   :info
                :type    :service.rest/request.starting}))))))
 
 (deftest wrap-response-logging-test
@@ -64,10 +77,11 @@
             time (atom 0)
             duration 10
             current-time-millis-fn (fn [] (swap! time #(+ % 10)))
+            options {:current-time-millis-fn current-time-millis-fn}
             wrapped-handler (sut/wrap-response-logging
                               base-handler
                               logger
-                              {:current-time-millis-fn current-time-millis-fn})
+                              options)
             response (wrapped-handler request)]
         (is (= response
               test-response))
@@ -86,10 +100,11 @@
             time (atom 0)
             duration 10
             current-time-millis-fn (fn [] (swap! time #(+ % 10)))
+            options {:current-time-millis-fn current-time-millis-fn}
             wrapped-handler (sut/wrap-response-logging
                               base-handler
                               logger
-                              {:current-time-millis-fn current-time-millis-fn})
+                              options)
             response (run-async-handler wrapped-handler request)]
         (is (= response
               test-response))
@@ -102,4 +117,30 @@
                          :request  request
                          :response test-response}
                :level   :info
-               :type    :service.rest/request.completed}))))))
+               :type    :service.rest/request.completed}))))
+    (testing "can provide functions for updating request/response data"
+      (testing "sync response is logged"
+        (let [logger (log/logger)
+              time (atom 0)
+              duration 10
+              current-time-millis-fn (fn [] (swap! time #(+ % 10)))
+              redact-bodies
+              (fn [context]
+                (-> context
+                  (assoc-in [:request :body] "<request-body>")
+                  (assoc-in [:response :body] "<response-body>")))
+              options {:current-time-millis-fn current-time-millis-fn
+                       :update-context-fn      redact-bodies}
+              wrapped-handler (sut/wrap-response-logging
+                                base-handler
+                                logger
+                                options)
+              _ (wrapped-handler request)]
+          (is (logged?
+                logger
+                #{:only}
+                {:context {:latency  duration
+                           :request  {:body "<request-body>"}
+                           :response {:body "<response-body>"}}
+                 :level   :info
+                 :type    :service.rest/request.completed})))))))
